@@ -428,6 +428,8 @@ def register_routes(app):
                         # 如果转换失败，假设是 Gemini fileId（兼容性处理）
                         print(f"[警告] 文件ID {fid} 格式未知，尝试直接使用（可能是 Gemini fileId）")
                         gemini_file_ids.append(fid)
+
+            print(f"[图片调试] 输入汇总: user_msg_len={len(user_message)}, inline_images={len(input_images)}, input_file_ids={input_file_ids}, gemini_file_ids={gemini_file_ids}")
             
             if not user_message and not input_images and not gemini_file_ids:
                 return jsonify({"error": "No user message found"}), 400
@@ -630,6 +632,7 @@ def register_routes(app):
                             uploaded_file_id = upload_inline_image_to_gemini(jwt, session, team_id, img, proxy, account_idx)
                             if uploaded_file_id:
                                 gemini_file_ids.append(uploaded_file_id)
+                                print(f"[图片调试] 内联图片已上传 -> gemini_file_id={uploaded_file_id}, 总数={len(gemini_file_ids)}")
                                 # 保存文件到 file_manager，关联 session（用于后续复用）
                                 if file_manager:
                                     # 从图片数据中获取信息
@@ -678,6 +681,8 @@ def register_routes(app):
                         # 准备流式生成器的参数
                         chat_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
                         created_ts = int(time.time())
+
+                        print(f"[图片调试][流] 创建生成器: chat_id={chat_id}, gemini_file_ids={gemini_file_ids}, has_input_images={has_images}, request_quota_type={request_quota_type}")
                         
                         # 使用真正的流式生成器
                         stream_generator = stream_chat_realtime_generator(
@@ -841,6 +846,7 @@ def register_routes(app):
             # 配额错误会通过 HTTP 错误码（401, 403, 429）被动检测，并在 raise_for_account_response 中处理
 
             print(f"[调试] 📝 准备构建响应内容 - chat_response 类型: {type(chat_response)}, 内容预览: {str(chat_response)[:200] if chat_response else 'None'}")
+            print(f"[图片调试][非流] chat_response 文本长度={len(chat_response.text) if chat_response else 0}, 图片数量={len(chat_response.images) if chat_response else 0}")
             response_content = build_openai_response_content(chat_response, request.host_url, account_manager, request, data)
 
             if False:  # 原来的流式逻辑已移到上面
@@ -2154,4 +2160,3 @@ def register_routes(app):
         # 移除已废弃的字段
         config.pop("api_tokens", None)  # 已废弃，使用新的 API 密钥管理系统
         return jsonify(config)
-

@@ -1120,6 +1120,11 @@ def build_openai_response_content(chat_response: ChatResponse, host_url: str, ac
     
     # 检测客户端支持的图片格式
     image_format = detect_client_image_format(request, request_data)
+    sample_img = None
+    if chat_response.images:
+        first_img = chat_response.images[0]
+        sample_img = first_img.url or first_img.file_name or ("base64" if first_img.base64_data else None)
+    print(f"[图片调试] 构建响应: image_format={image_format}, images={len(chat_response.images)}, sample={sample_img}")
     
     # 如果有图片或视频
     if chat_response.images:
