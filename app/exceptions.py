@@ -18,6 +18,8 @@ class AccountAuthError(AccountError):
 class AccountRateLimitError(AccountError):
     """配额或限流异常"""
 
+class AccountResourceExhaustedError(AccountError):
+    """资源耗尽异常"""
 
 class AccountRequestError(AccountError):
     """其他请求异常"""

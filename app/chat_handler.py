@@ -725,6 +725,10 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
             f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
             f"body_len={len(full_response)}, body_preview={full_response}"
         )
+        # 判断full_response是否包含`Resource has been exhausted`或者`RESOURCE_EXHAUSTED`或者`"code": 429`
+        if "Resource has been exhausted" in full_response or "RESOURCE_EXHAUSTED" in full_response or "\"code\": 429" in full_response:
+            raise AccountResourceExhaustedError(f"资源耗尽")
+
 
     result.text = "".join(texts)
     return result
@@ -1132,11 +1136,6 @@ def build_openai_response_content(chat_response: ChatResponse, host_url: str, ac
     
     # 检测客户端支持的图片格式
     image_format = detect_client_image_format(request, request_data)
-    sample_img = None
-    if chat_response.images:
-        first_img = chat_response.images[0]
-        sample_img = first_img.url or first_img.file_name or ("base64" if first_img.base64_data else None)
-    print(f"[图片调试] 构建响应: image_format={image_format}, images={len(chat_response.images)}, sample={sample_img}")
     
     # 如果有图片或视频
     if chat_response.images:

@@ -76,6 +76,7 @@ from .utils import check_proxy, seconds_until_next_pt_midnight
 # 导入异常类
 from .exceptions import (
     AccountRateLimitError,
+    AccountResourceExhaustedError,
     AccountAuthError,
     AccountRequestError,
     NoAvailableAccount
@@ -708,6 +709,11 @@ def register_routes(app):
                         pt_wait = seconds_until_next_pt_midnight()
                         cooldown_seconds = max(account_manager.rate_limit_cooldown, pt_wait)
                         account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
+                    continue
+                except AccountResourceExhaustedError as e:
+                    last_error = e
+                    if account_idx is not None:
+                        account_manager.mark_quota_error(account_idx, 429, str(e), "images")
                     continue
                 except AccountAuthError as e:
                     last_error = e
