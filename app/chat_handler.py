@@ -1032,64 +1032,76 @@ def detect_client_image_format(request=None, request_data=None) -> str:
         "markdown" - Markdown 格式
         "url" - 纯 URL 格式
     """
-    # 1. 检查请求参数中的格式偏好（最高优先级）
-    if request_data:
-        image_format = request_data.get('image_format') or request_data.get('response_format')
-        if image_format in ['array', 'markdown', 'url']:
-            return image_format
-    
-    if not request:
-        return "array"  # 默认使用数组格式
-    
-    # 2. User-Agent 检测（已知客户端）- 优先于消息格式检测
-    # 这样可以确保已知客户端（如 Cherry Studio）的格式不会被消息格式覆盖
-    user_agent = request.headers.get('User-Agent', '').lower()
-    
-    # 已知需要 Markdown 格式的客户端（优先检查，避免被消息格式覆盖）
-    markdown_format_clients = [
-        'cherry',  # Cherry Studio
-        'studio',  # 某些 Studio 客户端
-    ]
-    
-    # 已知支持数组格式的客户端
-    array_format_clients = [
-        'cursor',  # Cursor IDE
-        'vscode',  # VS Code
-        'chatgpt',  # ChatGPT
-        'openai',  # OpenAI 官方客户端
-        'anthropic',  # Claude
-    ]
-    
-    # 优先检查 Markdown 格式客户端（因为 Cherry Studio 上传图片时也会发送数组格式）
-    for client in markdown_format_clients:
-        if client in user_agent:
-            return "markdown"
-    
-    # 检查数组格式客户端
-    for client in array_format_clients:
-        if client in user_agent:
+    try:
+        # 先把请求数据规范成字典，避免字符串/其它类型直接调用 .get 触发异常
+        if isinstance(request_data, str):
+            try:
+                request_data = json.loads(request_data)
+            except Exception:
+                request_data = {}
+        elif not isinstance(request_data, dict):
+            request_data = {}
+
+        # 1. 检查请求参数中的格式偏好（最高优先级）
+        if request_data:
+            image_format = request_data.get('image_format') or request_data.get('response_format')
+            if image_format in ['array', 'markdown', 'url']:
+                return image_format
+        
+        if not request:
+            return "array"  # 默认使用数组格式
+        
+        # 2. User-Agent 检测（已知客户端）- 优先于消息格式检测
+        # 这样可以确保已知客户端（如 Cherry Studio）的格式不会被消息格式覆盖
+        user_agent = request.headers.get('User-Agent', '').lower()
+        
+        # 已知需要 Markdown 格式的客户端（优先检查，避免被消息格式覆盖）
+        markdown_format_clients = [
+            'cherry',  # Cherry Studio
+            'studio',  # 某些 Studio 客户端
+        ]
+        
+        # 已知支持数组格式的客户端
+        array_format_clients = [
+            'cursor',  # Cursor IDE
+            'vscode',  # VS Code
+            'chatgpt',  # ChatGPT
+            'openai',  # OpenAI 官方客户端
+            'anthropic',  # Claude
+        ]
+        
+        # 优先检查 Markdown 格式客户端（因为 Cherry Studio 上传图片时也会发送数组格式）
+        for client in markdown_format_clients:
+            if client in user_agent:
+                return "markdown"
+        
+        # 检查数组格式客户端
+        for client in array_format_clients:
+            if client in user_agent:
+                return "array"
+        
+        # 3. 检查客户端发送的消息格式（如果发送数组格式，说明支持数组格式）
+        # 注意：这个检查在 User-Agent 检测之后，避免覆盖已知客户端
+        if request_data:
+            messages = request_data.get('messages', [])
+            for msg in messages:
+                content = msg.get('content', '')
+                # 如果消息内容是数组格式，说明客户端支持数组格式
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get('type') in ['text', 'image_url', 'file']:
+                            return "array"  # 客户端支持数组格式
+        
+        # 4. 检查 Accept 头（某些客户端可能通过 Accept 头表明支持的格式）
+        accept = request.headers.get('Accept', '').lower()
+        if 'application/json' in accept and 'text/markdown' not in accept:
+            # 如果只接受 JSON，可能支持数组格式
             return "array"
-    
-    # 3. 检查客户端发送的消息格式（如果发送数组格式，说明支持数组格式）
-    # 注意：这个检查在 User-Agent 检测之后，避免覆盖已知客户端
-    if request_data:
-        messages = request_data.get('messages', [])
-        for msg in messages:
-            content = msg.get('content', '')
-            # 如果消息内容是数组格式，说明客户端支持数组格式
-            if isinstance(content, list):
-                for item in content:
-                    if isinstance(item, dict) and item.get('type') in ['text', 'image_url', 'file']:
-                        return "array"  # 客户端支持数组格式
-    
-    # 4. 检查 Accept 头（某些客户端可能通过 Accept 头表明支持的格式）
-    accept = request.headers.get('Accept', '').lower()
-    if 'application/json' in accept and 'text/markdown' not in accept:
-        # 如果只接受 JSON，可能支持数组格式
+        
+        # 5. 默认使用数组格式（OpenAI 标准格式）
         return "array"
-    
-    # 5. 默认使用数组格式（OpenAI 标准格式）
-    return "array"
+    except Exception:
+        return "array"
 
 
 def build_openai_response_content(chat_response: ChatResponse, host_url: str, account_manager=None, request=None, request_data=None):
@@ -1222,4 +1234,3 @@ def build_openai_response_content(chat_response: ChatResponse, host_url: str, ac
     
     # 没有图片，返回纯文本
     return result_text
-

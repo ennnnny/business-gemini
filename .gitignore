@@ -97,3 +97,6 @@ htmlcov/
 
 # 临时指南文件
 GITHUB_UPLOAD_GUIDE.md
+
+.spec-workflow/
+.history/
