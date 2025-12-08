@@ -711,6 +711,7 @@ def register_routes(app):
                         account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
                     continue
                 except AccountResourceExhaustedError as e:
+                    print(f"[!] 账号 {account_idx} 错误: {e}")
                     last_error = e
                     if account_idx is not None:
                         account_manager.mark_quota_error(account_idx, 429, str(e), "images")

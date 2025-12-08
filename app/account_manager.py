@@ -480,6 +480,7 @@ class AccountManager:
                     cooldown_seconds = self.generic_error_cooldown
                 
                 new_until = now_ts + cooldown_seconds
+                print(f"[!] 账号 {index} {quota_type} 配额错误 (HTTP {status_code})，进入冷却 {cooldown_seconds} 秒")
                 state = self.account_states.setdefault(index, {})
                 
                 if quota_type:
@@ -490,6 +491,7 @@ class AccountManager:
                     current_until = state["quota_type_cooldowns"].get(quota_type, 0)
                     # 如果已有更长的冷却，则不重复更新
                     if current_until > now_ts and current_until >= new_until:
+                        print(f"[!] 账号 {index} {quota_type} 配额错误 (HTTP {status_code})，已有更长冷却期，跳过")
                         return
                     
                     until = max(new_until, current_until)
