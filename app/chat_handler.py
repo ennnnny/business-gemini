@@ -720,11 +720,10 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
 
     if not result.text and not result.images:
         # 打印最原始的响应，便于排查图片丢失
-        resp_preview = (full_response or "")[:2000]
         print(
             f"[图片调试][raw] http_status={resp.status_code}, "
             f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
-            f"body_len={len(full_response)}, body_preview={resp_preview}"
+            f"body_len={len(full_response)}, body_preview={full_response}"
         )
 
     result.text = "".join(texts)
