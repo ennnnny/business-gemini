@@ -517,21 +517,21 @@ def register_routes(app):
                     print(f"[检测] ℹ️ 前端传递的对话包含图片输入（input_images={len(input_images)}, input_file_ids={len(input_file_ids)}, gemini_file_ids={len(gemini_file_ids)}），is_new_conversation={is_new_conversation}")
             
             preferred_account_idx = None
-            if selected_model_config and "account_index" in selected_model_config:
-                preferred_account_idx = selected_model_config.get("account_index")
-                print(f"[账号选择] 📋 模型配置指定账号索引: {preferred_account_idx} (model_id={selected_model_config.get('id', 'N/A')})")
-                if preferred_account_idx >= 0 and preferred_account_idx < len(account_manager.accounts):
-                    if account_manager.is_account_available(preferred_account_idx):
-                        print(f"[账号选择] ✅ 首选账号 {preferred_account_idx} 可用")
-                        preferred_account_idx = preferred_account_idx
-                    else:
-                        print(f"[账号选择] ❌ 首选账号 {preferred_account_idx} 不可用，将使用轮询模式")
-                        preferred_account_idx = None
-                else:
-                    print(f"[账号选择] ⚠️ 首选账号索引 {preferred_account_idx} 超出范围，将使用轮询模式")
-                    preferred_account_idx = None
-            else:
-                print(f"[账号选择] 📋 模型配置未指定账号索引，将使用轮询模式 (model_id={selected_model_config.get('id', 'N/A') if selected_model_config else 'N/A'})")
+            # if selected_model_config and "account_index" in selected_model_config:
+            #     preferred_account_idx = selected_model_config.get("account_index")
+            #     print(f"[账号选择] 📋 模型配置指定账号索引: {preferred_account_idx} (model_id={selected_model_config.get('id', 'N/A')})")
+            #     if preferred_account_idx >= 0 and preferred_account_idx < len(account_manager.accounts):
+            #         if account_manager.is_account_available(preferred_account_idx):
+            #             print(f"[账号选择] ✅ 首选账号 {preferred_account_idx} 可用")
+            #             preferred_account_idx = preferred_account_idx
+            #         else:
+            #             print(f"[账号选择] ❌ 首选账号 {preferred_account_idx} 不可用，将使用轮询模式")
+            #             preferred_account_idx = None
+            #     else:
+            #         print(f"[账号选择] ⚠️ 首选账号索引 {preferred_account_idx} 超出范围，将使用轮询模式")
+            #         preferred_account_idx = None
+            # else:
+            #     print(f"[账号选择] 📋 模型配置未指定账号索引，将使用轮询模式 (model_id={selected_model_config.get('id', 'N/A') if selected_model_config else 'N/A'})")
             
             try_without_model_id = is_auto_model
             
