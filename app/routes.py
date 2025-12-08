@@ -519,11 +519,19 @@ def register_routes(app):
             preferred_account_idx = None
             if selected_model_config and "account_index" in selected_model_config:
                 preferred_account_idx = selected_model_config.get("account_index")
+                print(f"[账号选择] 📋 模型配置指定账号索引: {preferred_account_idx} (model_id={selected_model_config.get('id', 'N/A')})")
                 if preferred_account_idx >= 0 and preferred_account_idx < len(account_manager.accounts):
                     if account_manager.is_account_available(preferred_account_idx):
+                        print(f"[账号选择] ✅ 首选账号 {preferred_account_idx} 可用")
                         preferred_account_idx = preferred_account_idx
                     else:
+                        print(f"[账号选择] ❌ 首选账号 {preferred_account_idx} 不可用，将使用轮询模式")
                         preferred_account_idx = None
+                else:
+                    print(f"[账号选择] ⚠️ 首选账号索引 {preferred_account_idx} 超出范围，将使用轮询模式")
+                    preferred_account_idx = None
+            else:
+                print(f"[账号选择] 📋 模型配置未指定账号索引，将使用轮询模式 (model_id={selected_model_config.get('id', 'N/A') if selected_model_config else 'N/A'})")
             
             try_without_model_id = is_auto_model
             
@@ -546,13 +554,17 @@ def register_routes(app):
                     if preferred_account_idx is not None and retry_idx == 0:
                         account = account_manager.accounts[preferred_account_idx]
                         account_idx = preferred_account_idx
+                        print(f"[账号选择] 🎯 使用首选账号 (preferred_account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
                         # 检查首选账号的配额类型是否可用
                         if required_quota_type and not account_manager.is_account_available(account_idx, required_quota_type):
+                            print(f"[账号选择] ⚠️ 首选账号 {account_idx} 的配额类型 {required_quota_type} 不可用，切换到轮询模式")
                             preferred_account_idx = None
                             account_idx, account = account_manager.get_next_account(required_quota_type)
+                            print(f"[账号选择] 🔄 轮询获取账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
                     else:
                         # 根据请求类型选择对应配额类型可用的账号
                         account_idx, account = account_manager.get_next_account(required_quota_type)
+                        print(f"[账号选择] 🔄 轮询获取账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type}, retry_idx={retry_idx})")
                     
                     # ⚠️ 特殊处理：如果当前请求是新对话且有文本（不是 "empty"），
                     # 检查是否有 "empty" 会话键的 session（可能是之前只有图片的请求创建的）
@@ -682,6 +694,7 @@ def register_routes(app):
                     else:
                         # 非流式模式：使用原来的函数
                         chat_response = stream_chat_with_images(jwt, session, user_message, proxy, team_id, gemini_file_ids, api_model_id, account_manager, account_idx, request_quota_type)
+                        print(f"[调试] ✅ 非流式模式获取到响应 - chat_response 类型: {type(chat_response)}, 值: {chat_response}")
                         successful_account_idx = account_idx
                         break
                 except AccountRateLimitError as e:
@@ -818,6 +831,7 @@ def register_routes(app):
                 return Response(generate(), mimetype='text/event-stream')
             
             # 非流式模式：使用原来的逻辑
+            print(f"[调试] 🔍 准备检查 chat_response - 类型: {type(chat_response)}, 是否为 None: {chat_response is None}, last_error: {last_error}")
             if chat_response is None:
                 error_message = last_error or "没有可用的账号"
                 status_code = 429 if isinstance(last_error, (AccountRateLimitError, NoAvailableAccount)) else 500
@@ -826,6 +840,7 @@ def register_routes(app):
             # 被动检测方式：不再主动记录配额使用量
             # 配额错误会通过 HTTP 错误码（401, 403, 429）被动检测，并在 raise_for_account_response 中处理
 
+            print(f"[调试] 📝 准备构建响应内容 - chat_response 类型: {type(chat_response)}, 内容预览: {str(chat_response)[:200] if chat_response else 'None'}")
             response_content = build_openai_response_content(chat_response, request.host_url, account_manager, request, data)
 
             if False:  # 原来的流式逻辑已移到上面
