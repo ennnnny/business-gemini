@@ -8,10 +8,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./geminibusiness.db:/app/geminibusiness.db:rw
-      - ./log:/app/log:rw
-      - ./image:/app/image:rw
-      - ./video:/app/video:rw
+      - .:/app:rw  # 挂载源代码，改动后重启容器即可生效
+      # - ./geminibusiness.db:/app/geminibusiness.db:rw
+      # - ./log:/app/log:rw
+      # - ./image:/app/image:rw
+      # - ./video:/app/video:rw
       # 可选：挂载 .env 文件（推荐）
       # - ./.env:/app/.env:ro
     user: "1000:1000"
@@ -33,6 +34,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - gemini-network
 
