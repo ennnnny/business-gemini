@@ -187,6 +187,8 @@ def download_file_with_jwt(jwt: str, session_name: str, file_id: str, proxy: Opt
     
     resp.raise_for_status()
     content = resp.content
+
+    print(f"[下载] {url} - {len(content)} bytes - status: {resp.status_code}")
     
     # 检测是否为base64编码的内容
     try:
