@@ -540,6 +540,10 @@ def register_routes(app):
             
             # 检测是否是图片生成请求
             is_image_model = selected_model_config and selected_model_config.get("id") == "gemini-image"
+            if "生成图片" in user_message:
+                is_image_model = True
+            if "生成视频" in user_message:
+                is_video_model = True
             # 如果使用默认工具集，也可能生成图片，需要检查图片配额
             # 但为了性能，只在明确是图片模型时检查，普通模型在生成图片后再检查
             
@@ -552,6 +556,8 @@ def register_routes(app):
                         required_quota_type = "images"
                     elif is_video_model:
                         required_quota_type = "videos"
+                    
+                    print(f"[账号选择] 📋 请求类型: {required_quota_type}")
                     # 文本查询不需要指定配额类型（因为所有请求都需要文本配额）
                     
                     if preferred_account_idx is not None and retry_idx == 0:
@@ -563,11 +569,11 @@ def register_routes(app):
                             print(f"[账号选择] ⚠️ 首选账号 {account_idx} 的配额类型 {required_quota_type} 不可用，切换到轮询模式")
                             preferred_account_idx = None
                             account_idx, account = account_manager.get_next_account(required_quota_type)
-                            print(f"[账号选择] 🔄 轮询获取账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
+                            print(f"[账号选择] 🔄 轮询获取账号#1 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
                     else:
                         # 根据请求类型选择对应配额类型可用的账号
                         account_idx, account = account_manager.get_next_account(required_quota_type)
-                        print(f"[账号选择] 🔄 轮询获取账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type}, retry_idx={retry_idx})")
+                        print(f"[账号选择] 🔄 轮询获取账号#2 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type}, retry_idx={retry_idx})")
                     
                     # ⚠️ 特殊处理：如果当前请求是新对话且有文本（不是 "empty"），
                     # 检查是否有 "empty" 会话键的 session（可能是之前只有图片的请求创建的）
@@ -714,7 +720,7 @@ def register_routes(app):
                     print(f"[!] 账号 {account_idx} 错误: {e}")
                     last_error = e
                     if account_idx is not None:
-                        account_manager.mark_quota_error(account_idx, 429, str(e), "images")
+                        account_manager.mark_quota_error(account_idx, 429, str(e), required_quota_type)
                     continue
                 except AccountAuthError as e:
                     last_error = e
