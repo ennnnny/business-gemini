@@ -849,7 +849,7 @@ def register_routes(app):
                 return Response(generate(), mimetype='text/event-stream')
             
             # 非流式模式：使用原来的逻辑
-            print(f"[调试] 🔍 准备检查 chat_response - 类型: {type(chat_response)}, 是否为 None: {chat_response is None}, last_error: {last_error}")
+            # print(f"[调试] 🔍 准备检查 chat_response - 类型: {type(chat_response)}, 是否为 None: {chat_response is None}, last_error: {last_error}")
             if chat_response is None:
                 error_message = last_error or "没有可用的账号"
                 status_code = 429 if isinstance(last_error, (AccountRateLimitError, NoAvailableAccount)) else 500
