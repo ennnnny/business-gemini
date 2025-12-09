@@ -727,8 +727,8 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
         # )
         # 判断full_response是否包含`Resource has been exhausted`或者`RESOURCE_EXHAUSTED`或者`"code": 429`
         if "Resource has been exhausted" in full_response or "RESOURCE_EXHAUSTED" in full_response or "\"code\": 429" in full_response:
-            print(f"[429]响应体包含配额错误信息")
-            # raise AccountResourceExhaustedError(f"资源耗尽")
+            print(f"❌[429]响应体包含配额错误信息")
+            raise AccountResourceExhaustedError(f"资源耗尽")
 
 
     result.text = "".join(texts)
