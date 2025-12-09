@@ -12,7 +12,7 @@ from app.models import ChatResponse, ChatImage
 from app.config import STREAM_ASSIST_URL, IMAGE_CACHE_DIR, VIDEO_CACHE_DIR
 from app.session_manager import get_headers
 from app.utils import raise_for_account_response
-from app.exceptions import AccountRequestError
+from app.exceptions import AccountRequestError, AccountResourceExhaustedError
 from app.media_handler import (
     get_extension_for_mime,
     save_image_to_cache,
@@ -609,7 +609,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                     if filtered_text:
                         texts.append(filtered_text)
         
-        print(f"[DEBUG][stream_chat_with_images] file_ids_list: {json.dumps(file_ids_list, ensure_ascii=False, indent=2)}")
+        # print(f"[DEBUG][stream_chat_with_images] file_ids_list: {json.dumps(file_ids_list, ensure_ascii=False, indent=2)}")
 
         # 处理通过fileId引用的图片/视频
         if file_ids_list and current_session:
@@ -620,7 +620,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                 use_cfbed = bool(upload_endpoint and upload_api_token)
                 
                 file_metadata = get_session_file_metadata(jwt, current_session, team_id, proxy)
-                print(f"[DEBUG][get_session_file_metadata] 文件元数据: {json.dumps(file_metadata, ensure_ascii=False, indent=2)}")
+                # print(f"[DEBUG][get_session_file_metadata] 文件元数据: {json.dumps(file_metadata, ensure_ascii=False, indent=2)}")
                 for finfo in file_ids_list:
                     fid = finfo["fileId"]
                     mime = finfo["mimeType"]
