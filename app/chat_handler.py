@@ -720,15 +720,15 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
 
     if not result.text and not result.images:
         # 打印最原始的响应，便于排查图片丢失
-        print(
-            f"[图片调试][raw] http_status={resp.status_code}, "
-            f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
-            f"body_len={len(full_response)}, body_preview={full_response}"
-        )
+        # print(
+        #     f"[图片调试][raw] http_status={resp.status_code}, "
+        #     f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
+        #     f"body_len={len(full_response)}, body_preview={full_response}"
+        # )
         # 判断full_response是否包含`Resource has been exhausted`或者`RESOURCE_EXHAUSTED`或者`"code": 429`
         if "Resource has been exhausted" in full_response or "RESOURCE_EXHAUSTED" in full_response or "\"code\": 429" in full_response:
-            print(f"响应体包含配额错误信息，抛出配额错误")
-            raise AccountResourceExhaustedError(f"资源耗尽")
+            print(f"[429]响应体包含配额错误信息")
+            # raise AccountResourceExhaustedError(f"资源耗尽")
 
 
     result.text = "".join(texts)
