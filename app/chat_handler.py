@@ -74,7 +74,7 @@ def get_tools_spec_for_model(model_id: Optional[str]) -> Dict[str, Any]:
         工具配置字典
     """
     # gemini-image: 只启用图片生成
-    if model_id == "gemini-image":
+    if model_id == "gemini-image" or model_id == "gemini-3-pro-preview":
         return {
             "imageGenerationSpec": {}
         }
@@ -149,7 +149,7 @@ def stream_chat_realtime_generator(jwt: str, sess_name: str, message: str,
     }
     
     # 如果指定了模型ID，在 streamAssistRequest 中添加 assistGenerationConfig
-    if model_id and model_id not in ["gemini-video", "gemini-image"]:
+    if model_id and model_id not in ["gemini-video", "gemini-image", "gemini-3-pro-preview"]:
         body["streamAssistRequest"]["assistGenerationConfig"] = {
             "modelId": model_id
         }
@@ -270,6 +270,7 @@ def stream_chat_realtime_generator(jwt: str, sess_name: str, message: str,
                         }
                         yield f"data: {json.dumps(text_chunk, ensure_ascii=False)}\n\n"
     
+    print(f"[DEBUG][stream_chat_with_images] file_ids_list: {json.dumps(file_ids_list, ensure_ascii=False, indent=2)}")
     # 处理通过fileId引用的图片/视频（需要下载，在流式结束后处理）
     if file_ids_list and current_session:
         try:
@@ -461,7 +462,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
     # 如果指定了模型ID，在 streamAssistRequest 中添加 assistGenerationConfig
     # 根据实际 API 请求，模型ID应该通过 assistGenerationConfig.modelId 传递
     # 注意：对于 gemini-video 和 gemini-image，这些是虚拟模型ID，不需要传递给 API
-    if model_id and model_id not in ["gemini-video", "gemini-image"]:
+    if model_id and model_id not in ["gemini-video", "gemini-image", "gemini-3-pro-preview"]:
         body["streamAssistRequest"]["assistGenerationConfig"] = {
             "modelId": model_id
         }
@@ -609,7 +610,7 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
                     if filtered_text:
                         texts.append(filtered_text)
         
-        # print(f"[DEBUG][stream_chat_with_images] file_ids_list: {json.dumps(file_ids_list, ensure_ascii=False, indent=2)}")
+        print(f"[DEBUG][stream_chat_with_images] file_ids_list: {json.dumps(file_ids_list, ensure_ascii=False, indent=2)}")
 
         # 处理通过fileId引用的图片/视频
         if file_ids_list and current_session:
@@ -720,15 +721,15 @@ def stream_chat_with_images(jwt: str, sess_name: str, message: str,
 
     if not result.text and not result.images:
         # 打印最原始的响应，便于排查图片丢失
-        # print(
-        #     f"[图片调试][raw] http_status={resp.status_code}, "
-        #     f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
-        #     f"body_len={len(full_response)}, body_preview={full_response}"
-        # )
+        print(
+            f"[图片调试][raw] http_status={resp.status_code}, "
+            f"headers={{'Content-Type': {resp.headers.get('Content-Type')}, 'Content-Length': {resp.headers.get('Content-Length')}}}, "
+            f"body_len={len(full_response)}, body_preview={full_response}"
+        )
         # 判断full_response是否包含`Resource has been exhausted`或者`RESOURCE_EXHAUSTED`或者`"code": 429`
         if "Resource has been exhausted" in full_response or "RESOURCE_EXHAUSTED" in full_response or "\"code\": 429" in full_response:
             print(f"❌[429]响应体包含配额错误信息")
-            raise AccountResourceExhaustedError(f"资源耗尽")
+            # raise AccountResourceExhaustedError(f"资源耗尽")
 
 
     result.text = "".join(texts)
