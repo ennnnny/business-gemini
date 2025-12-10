@@ -9,13 +9,37 @@ import base64
 import secrets
 from typing import Optional
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, g
 
 from werkzeug.security import generate_password_hash, check_password_hash
 from .account_manager import account_manager
 
 # 全局变量
 ADMIN_SECRET_KEY = None
+
+
+def _split_token_and_forced_account(token: str):
+    """拆分出基础密钥与指定账号序号"""
+    if not token:
+        return None, None, None
+    if "@#@" not in token:
+        return token, None, None
+    
+    base_token, idx_str = token.rsplit("@#@", 1)
+    if not base_token:
+        return None, None, "缺少密钥部分"
+    idx_str = idx_str.strip()
+    if not idx_str:
+        return None, None, "缺少账号序号"
+    if not idx_str.isdigit():
+        return None, None, "账号序号必须是数字"
+    
+    return base_token, int(idx_str), None
+
+
+def get_forced_account_index() -> Optional[int]:
+    """获取当前请求指定的账号序号"""
+    return getattr(g, "forced_account_idx", None)
 
 
 def get_admin_secret_key() -> str:
@@ -93,14 +117,19 @@ def is_valid_api_token(token: str) -> bool:
     if not token:
         return False
     
+    base_token, forced_idx, parse_error = _split_token_and_forced_account(token)
+    if parse_error:
+        return False
+    token_to_verify = base_token
+    
     # 1. 检查是否是管理员 token
-    if verify_admin_token(token):
+    if verify_admin_token(token_to_verify):
         return True
     
     # 2. 检查是否是 API 密钥（数据库）
     try:
         from .api_key_manager import verify_api_key
-        api_key_obj = verify_api_key(token)
+        api_key_obj = verify_api_key(token_to_verify)
         if api_key_obj:
             return True
     except Exception:
@@ -115,9 +144,13 @@ def get_api_key_from_token(token: str):
     if not token:
         return None
     
+    base_token, _, parse_error = _split_token_and_forced_account(token)
+    if parse_error:
+        return None
+    
     try:
         from .api_key_manager import verify_api_key
-        return verify_api_key(token)
+        return verify_api_key(base_token)
     except Exception:
         return None
 
@@ -141,11 +174,16 @@ def require_api_auth(func):
             or request.headers.get("Authorization", "").replace("Bearer ", "")
             or request.cookies.get("admin_token")
         )
-        if not is_valid_api_token(token):
+        base_token, forced_idx, parse_error = _split_token_and_forced_account(token)
+        if parse_error:
+            return jsonify({"error": f"API 密钥格式错误: {parse_error}"}), 400
+        if forced_idx is not None:
+            g.forced_account_idx = forced_idx
+        if not is_valid_api_token(base_token):
             return jsonify({"error": "未授权"}), 401
         
         # 如果是 API 密钥，更新使用统计
-        api_key_obj = get_api_key_from_token(token)
+        api_key_obj = get_api_key_from_token(base_token)
         if api_key_obj:
             from .api_key_manager import update_api_key_usage
             update_api_key_usage(api_key_obj.id)
@@ -162,4 +200,3 @@ def require_admin(func):
             return jsonify({"error": "未授权"}), 401
         return func(*args, **kwargs)
     return wrapper
-

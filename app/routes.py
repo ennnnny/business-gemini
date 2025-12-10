@@ -41,7 +41,8 @@ from .auth import (
     get_admin_password_hash,
     set_admin_password,
     create_admin_token,
-    get_admin_secret_key
+    get_admin_secret_key,
+    get_forced_account_index
 )
 from . import auth
 
@@ -153,22 +154,42 @@ def register_routes(app):
             file_content = file.read()
             mime_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
             
-            available_accounts = account_manager.get_available_accounts()
-            if not available_accounts:
-                next_cd = account_manager.get_next_cooldown_info()
-                wait_msg = ""
-                if next_cd:
-                    wait_msg = f"（最近冷却账号 {next_cd['index']}，约 {int(next_cd['cooldown_until']-time.time())} 秒后可重试）"
-                return jsonify({"error": {"message": f"没有可用的账号{wait_msg}", "type": "rate_limit"}}), 429
+            forced_account_idx = get_forced_account_index()
+            forced_account = None
+
+            if forced_account_idx is not None:
+                if forced_account_idx < 0 or forced_account_idx >= len(account_manager.accounts):
+                    return jsonify({"error": {"message": f"指定账号 {forced_account_idx} 不存在", "type": "invalid_request_error"}}), 400
+                if not account_manager.is_account_available(forced_account_idx):
+                    state = account_manager.account_states.get(forced_account_idx, {})
+                    reason = state.get("cooldown_reason") or "不可用"
+                    cooldown_until = state.get("cooldown_until")
+                    remaining = int(cooldown_until - time.time()) if cooldown_until and cooldown_until > time.time() else None
+                    extra = f"，约 {remaining} 秒后可重试" if remaining is not None else ""
+                    return jsonify({"error": {"message": f"指定账号 {forced_account_idx} 不可用：{reason}{extra}", "type": "rate_limit"}}), 429
+                forced_account = account_manager.accounts[forced_account_idx]
+                available_accounts = [(forced_account_idx, forced_account)]
+            else:
+                available_accounts = account_manager.get_available_accounts()
+                if not available_accounts:
+                    next_cd = account_manager.get_next_cooldown_info()
+                    wait_msg = ""
+                    if next_cd:
+                        wait_msg = f"（最近冷却账号 {next_cd['index']}，约 {int(next_cd['cooldown_until']-time.time())} 秒后可重试）"
+                    return jsonify({"error": {"message": f"没有可用的账号{wait_msg}", "type": "rate_limit"}}), 429
 
             max_retries = len(available_accounts)
             last_error = None
             gemini_file_id = None
             
             for retry_idx in range(max_retries):
-                account_idx = None
+                account_idx = forced_account_idx if forced_account is not None else None
                 try:
-                    account_idx, account = account_manager.get_next_account()
+                    if forced_account is not None:
+                        account = forced_account
+                        print(f"[账号选择] 🎯 强制使用账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')})")
+                    else:
+                        account_idx, account = account_manager.get_next_account()
                     session, jwt, team_id = ensure_session_for_account(account_idx, account)
                     from .utils import get_proxy
                     proxy = get_proxy()
@@ -435,19 +456,6 @@ def register_routes(app):
             if not user_message and not input_images and not gemini_file_ids:
                 return jsonify({"error": "No user message found"}), 400
             
-            available_accounts = account_manager.get_available_accounts()
-            if not available_accounts:
-                next_cd = account_manager.get_next_cooldown_info()
-                wait_msg = ""
-                if next_cd:
-                    wait_msg = f"（最近冷却账号 {next_cd['index']}，约 {int(next_cd['cooldown_until']-time.time())} 秒后可重试）"
-                return jsonify({"error": f"没有可用的账号{wait_msg}"}), 429
-
-            max_retries = len(available_accounts)
-            last_error = None
-            chat_response = None
-            successful_account_idx = None
-            
             # 优先使用前端传递的 conversation_id 和 is_new_conversation
             conversation_id = data.get('conversation_id')
             is_new_conversation = data.get('is_new_conversation', False)
@@ -546,21 +554,46 @@ def register_routes(app):
                 is_video_model = True
             # 如果使用默认工具集，也可能生成图片，需要检查图片配额
             # 但为了性能，只在明确是图片模型时检查，普通模型在生成图片后再检查
+            required_quota_type = "images" if is_image_model else "videos" if is_video_model else None
+            
+            forced_account_idx = get_forced_account_index()
+            forced_account = None
+            if forced_account_idx is not None:
+                if forced_account_idx < 0 or forced_account_idx >= len(account_manager.accounts):
+                    return jsonify({"error": f"指定账号 {forced_account_idx} 不存在"}), 400
+                if not account_manager.is_account_available(forced_account_idx, required_quota_type):
+                    state = account_manager.account_states.get(forced_account_idx, {})
+                    reason = state.get("cooldown_reason") or "不可用"
+                    cooldown_until = state.get("cooldown_until")
+                    remaining = int(cooldown_until - time.time()) if cooldown_until and cooldown_until > time.time() else None
+                    extra = f"，约 {remaining} 秒后可重试" if remaining is not None else ""
+                    return jsonify({"error": f"指定账号 {forced_account_idx} 不可用：{reason}{extra}"}), 429
+                forced_account = account_manager.accounts[forced_account_idx]
+                available_accounts = [(forced_account_idx, forced_account)]
+                preferred_account_idx = None  # 强制指定时忽略模型首选账号
+            else:
+                available_accounts = account_manager.get_available_accounts(required_quota_type)
+                if not available_accounts:
+                    next_cd = account_manager.get_next_cooldown_info()
+                    wait_msg = ""
+                    if next_cd:
+                        wait_msg = f"（最近冷却账号 {next_cd['index']}，约 {int(next_cd['cooldown_until']-time.time())} 秒后可重试）"
+                    return jsonify({"error": f"没有可用的账号{wait_msg}"}), 429
+            
+            max_retries = len(available_accounts)
+            last_error = None
+            chat_response = None
+            successful_account_idx = None
             
             for retry_idx in range(max_retries):
                 account_idx = None
                 try:
-                    # 被动检测方式：根据请求类型选择对应配额类型可用的账号
-                    required_quota_type = None
-                    if is_image_model:
-                        required_quota_type = "images"
-                    elif is_video_model:
-                        required_quota_type = "videos"
-                    
                     print(f"[账号选择] 📋 请求类型: {required_quota_type}")
-                    # 文本查询不需要指定配额类型（因为所有请求都需要文本配额）
-                    
-                    if preferred_account_idx is not None and retry_idx == 0:
+                    if forced_account is not None:
+                        account_idx = forced_account_idx
+                        account = forced_account
+                        print(f"[账号选择] 🎯 强制使用账号 (account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
+                    elif preferred_account_idx is not None and retry_idx == 0:
                         account = account_manager.accounts[preferred_account_idx]
                         account_idx = preferred_account_idx
                         print(f"[账号选择] 🎯 使用首选账号 (preferred_account_idx={account_idx}, csesidx={account.get('csesidx', 'N/A')}, required_quota_type={required_quota_type})")
