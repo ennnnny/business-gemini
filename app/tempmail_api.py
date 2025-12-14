@@ -300,8 +300,6 @@ class TempMailAPIClient:
                 if initial_mails:
                     initial_max_id = max(mail.get("id", 0) for mail in initial_mails)
                     log_print(f"[临时邮箱 API] 检测到提示时的最大邮件 ID: {initial_max_id}，将等待新邮件（ID > {initial_max_id}）", _level="INFO")
-                    # 设置 last_max_id 为初始最大ID，这样后续只会处理新邮件
-                    last_max_id = initial_max_id
             except:
                 pass
             # 等待 10 秒，确保验证码邮件已发送并到达
@@ -411,27 +409,14 @@ class TempMailAPIClient:
                             new_mails = [latest_mail]  # 只处理最新的一封新邮件
                             log_print(f"[临时邮箱 API] ✓ 发现新邮件（ID: {latest_id}），开始处理（检测到提示时的最大ID: {initial_max_id}）", _level="INFO")
                         else:
-                            # 如果没有新邮件，检查是否已经等待超过10秒
-                            # 如果点击了"重新发送验证码"，最多等待10秒，然后处理当前最新邮件
+                            # 没有新邮件且当前最大 ID 仍是提示时的 ID，继续等待，不要误判为重新发送
                             elapsed = int(time.time() - start_time)
-                            if current_max_id == initial_max_id and elapsed >= 10:
-                                # 检测到提示时的最大ID和当前最大ID相同，且已等待10秒
-                                # 说明点击了"重新发送验证码"，但邮件可能还是同一个ID
-                                # 直接处理当前最新邮件
-                                mails.sort(key=lambda x: x.get("id", 0), reverse=True)
-                                latest_mail = mails[0]
-                                latest_id = latest_mail.get("id", 0)
-                                new_mails = [latest_mail]
-                                log_print(f"[临时邮箱 API] ✓ 已等待10秒，当前最大ID与检测到提示时的最大ID相同（{current_max_id}），直接处理当前最新邮件（ID: {latest_id}）", _level="INFO")
-                            else:
-                                # 继续等待新邮件
-                                # 优化日志输出：每10秒打印一次（每2次循环），减少日志噪音
-                                if attempts % 2 == 0:  # 每 10 秒打印一次等待状态（每2次循环，每次5秒）
-                                    current_max = max(mail.get("id", 0) for mail in mails) if mails else 0
-                                    log_print(f"[临时邮箱 API] 等待新邮件到达（检测到提示时的最大ID: {initial_max_id}，当前最大ID: {current_max}，已等待 {elapsed} 秒）...", _level="INFO")
-                                if not retry_mode:
-                                    time.sleep(5)
-                                continue
+                            if attempts % 2 == 0:  # 每 10 秒打印一次等待状态（每2次循环，每次5秒）
+                                current_max = max(mail.get("id", 0) for mail in mails) if mails else 0
+                                log_print(f"[临时邮箱 API] 等待新邮件到达（检测到提示时的最大ID: {initial_max_id}，当前最大ID: {current_max}，已等待 {elapsed} 秒）...", _level="INFO")
+                            if not retry_mode:
+                                time.sleep(5)
+                            continue
                     
                     # 记录初始最大 ID，如果处理失败，下次将等待 ID > latest_id 的新邮件
                     initial_max_id_set = True
@@ -852,4 +837,3 @@ def get_verification_code_from_api(
     except Exception as e:
         log_print(f"[临时邮箱 API] 初始化客户端失败: {e}", _level="ERROR")
         return None
-
