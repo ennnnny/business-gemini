@@ -16,6 +16,15 @@ from urllib.parse import urlparse
 # 由于无法直接调用 chrome-mcp，这里提供使用 Playwright 的实现
 # 实际使用时可以通过 chrome-mcp 的 API 调用
 
+# 尝试导入 playwright-stealth（用于隐藏自动化特征）
+try:
+    from playwright_stealth import Stealth
+    STEALTH_AVAILABLE = True
+except ImportError:
+    STEALTH_AVAILABLE = False
+    Stealth = None
+    print("[提示] playwright-stealth 未安装，将使用内置的反检测脚本。建议安装: pip install playwright-stealth")
+
 # 临时邮箱配置说明：
 # 1. 优先使用：在账号配置中为每个账号配置 tempmail_url 和 tempmail_name（数据库或 JSON）
 #    例如：{"tempmail_url": "https://tempmail.example.com/?jwt=...", "tempmail_name": "邮箱1 (xxx@example.com)"}
@@ -1683,7 +1692,7 @@ def main():
         launch_args = []
         if os.name != 'nt':  # 非 Windows 系统
             launch_args = ['--no-sandbox', '--disable-setuid-sandbox']
-        
+
         # 添加反检测参数，降低被 reCAPTCHA 识别的风险
         launch_args.extend([
             '--disable-blink-features=AutomationControlled',  # 禁用自动化控制特征
@@ -1694,9 +1703,9 @@ def main():
             '--disable-web-security',  # 禁用 Web 安全（谨慎使用）
             '--disable-features=IsolateOrigins,site-per-process',  # 禁用某些安全特性
         ])
-        
+
         browser = p.chromium.launch(headless=use_headless, args=launch_args)
-        
+
         # 创建浏览器上下文，使用真实的用户代理和视口
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
@@ -1709,99 +1718,142 @@ def main():
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             }
         )
-        
-        # 注入脚本以隐藏自动化特征（增强版，更好地绕过 reCAPTCHA）
-        context.add_init_script("""
-            // 覆盖 navigator.webdriver
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            
-            // 覆盖 chrome 对象
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
-            
-            // 覆盖 permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-            
-            // 覆盖 plugins
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5]
-            });
-            
-            // 覆盖 languages
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['zh-CN', 'zh', 'en']
-            });
-            
-            // 覆盖 webdriver 相关属性
-            delete navigator.__proto__.webdriver;
-            
-            // 覆盖 getBattery
-            if (navigator.getBattery) {
-                navigator.getBattery = () => Promise.resolve({
-                    charging: true,
-                    chargingTime: 0,
-                    dischargingTime: Infinity,
-                    level: 1
+
+        # 应用反检测措施
+        if STEALTH_AVAILABLE:
+            # 使用 playwright-stealth（更全面的反检测）
+            # 配置说明：https://github.com/mattwmaster58/playwright_stealth
+            stealth = Stealth(
+                # Chrome 相关 API 伪装
+                chrome_app=True,                      # 添加 chrome.app 对象
+                chrome_csi=True,                      # 添加 chrome.csi() 函数
+                chrome_load_times=True,               # 添加 chrome.loadTimes() 函数
+                chrome_runtime=False,                 # chrome.runtime（默认禁用，某些网站会检测）
+
+                # Navigator 属性伪装
+                navigator_webdriver=True,             # 隐藏 navigator.webdriver（关键！）
+                navigator_languages=True,             # 伪装 navigator.languages
+                navigator_platform=True,              # 伪装 navigator.platform
+                navigator_plugins=True,               # 添加假的插件数据
+                navigator_user_agent=True,            # 伪装 navigator.userAgent
+                navigator_vendor=True,                # 设置 navigator.vendor
+                navigator_hardware_concurrency=True,  # 设置逻辑处理器数量
+                navigator_permissions=True,           # 修复 permissions API
+
+                # WebGL 伪装（防止通过 WebGL 指纹识别）
+                webgl_vendor=True,                    # 伪装 WebGL 厂商信息
+
+                # 其他伪装
+                iframe_content_window=True,           # 修复 iframe.contentWindow 检测
+                media_codecs=True,                    # 添加媒体编解码器支持
+                hairline=True,                        # 修复 hairline 特征检测
+
+                # 自定义覆盖值
+                navigator_languages_override=("zh-CN", "zh", "en"),
+                navigator_platform_override="Win32",
+                navigator_vendor_override="Google Inc.",
+                webgl_vendor_override="Intel Inc.",
+                webgl_renderer_override="Intel Iris OpenGL Engine",
+
+                # 行为选项
+                init_scripts_only=True,               # 只注入 JS，不修改浏览器启动参数（避免与我们的 launch_args 冲突）
+            )
+            stealth.apply_stealth_sync(context)
+            print("[反检测] ✓ 已应用 playwright-stealth")
+        else:
+            # 回退到手动注入脚本（基础反检测）
+            print("[反检测] 使用内置反检测脚本（建议安装 playwright-stealth 获得更好效果）")
+            context.add_init_script("""
+                // 覆盖 navigator.webdriver
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
                 });
-            }
-            
-            // 覆盖 connection
-            Object.defineProperty(navigator, 'connection', {
-                get: () => ({
-                    effectiveType: '4g',
-                    rtt: 50,
-                    downlink: 10,
-                    saveData: false
-                })
-            });
-            
-            // 覆盖 hardwareConcurrency
-            Object.defineProperty(navigator, 'hardwareConcurrency', {
-                get: () => 8
-            });
-            
-            // 覆盖 deviceMemory
-            Object.defineProperty(navigator, 'deviceMemory', {
-                get: () => 8
-            });
-            
-            // 覆盖 canvas 指纹
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function(type) {
-                if (type === 'image/png') {
+
+                // 覆盖 chrome 对象
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+
+                // 覆盖 permissions
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+
+                // 覆盖 plugins
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+
+                // 覆盖 languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['zh-CN', 'zh', 'en']
+                });
+
+                // 覆盖 webdriver 相关属性
+                delete navigator.__proto__.webdriver;
+
+                // 覆盖 getBattery
+                if (navigator.getBattery) {
+                    navigator.getBattery = () => Promise.resolve({
+                        charging: true,
+                        chargingTime: 0,
+                        dischargingTime: Infinity,
+                        level: 1
+                    });
+                }
+
+                // 覆盖 connection
+                Object.defineProperty(navigator, 'connection', {
+                    get: () => ({
+                        effectiveType: '4g',
+                        rtt: 50,
+                        downlink: 10,
+                        saveData: false
+                    })
+                });
+
+                // 覆盖 hardwareConcurrency
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8
+                });
+
+                // 覆盖 deviceMemory
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8
+                });
+
+                // 覆盖 canvas 指纹
+                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                HTMLCanvasElement.prototype.toDataURL = function(type) {
+                    if (type === 'image/png') {
+                        return originalToDataURL.apply(this, arguments);
+                    }
                     return originalToDataURL.apply(this, arguments);
-                }
-                return originalToDataURL.apply(this, arguments);
-            };
-            
-            // 覆盖 WebGL 指纹
-            const getParameter = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) {
-                    return 'Intel Inc.';
-                }
-                if (parameter === 37446) {
-                    return 'Intel Iris OpenGL Engine';
-                }
-                return getParameter.apply(this, arguments);
-            };
-        """)
-        
+                };
+
+                // 覆盖 WebGL 指纹
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel Iris OpenGL Engine';
+                    }
+                    return getParameter.apply(this, arguments);
+                };
+            """)
+
         # 创建两个标签页：一个用于临时邮箱，一个用于登录
         email_page = context.new_page()
         login_page = context.new_page()
-        
+
         try:
             # 步骤0：选择要使用的临时邮箱 URL
             tempmail_url, tempmail_name = select_tempmail_url()
@@ -2235,102 +2287,144 @@ def _refresh_single_account_internal(account_idx: int, account: dict, headless: 
                 }
             )
             
-            # 注入脚本以隐藏自动化特征（增强版，更好地绕过 reCAPTCHA）
-            context.add_init_script("""
-                // 覆盖 navigator.webdriver
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-                
-                // 覆盖 chrome 对象
-                window.chrome = {
-                    runtime: {},
-                    loadTimes: function() {},
-                    csi: function() {},
-                    app: {}
-                };
-                
-                // 覆盖 permissions
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        originalQuery(parameters)
-                );
-                
-                // 覆盖 plugins
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-                
-                // 覆盖 languages
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['zh-CN', 'zh', 'en']
-                });
-                
-                // 覆盖 webdriver 相关属性
-                delete navigator.__proto__.webdriver;
-                
-                // 覆盖 getBattery
-                if (navigator.getBattery) {
-                    navigator.getBattery = () => Promise.resolve({
-                        charging: true,
-                        chargingTime: 0,
-                        dischargingTime: Infinity,
-                        level: 1
+            # 应用反检测措施
+            if STEALTH_AVAILABLE:
+                # 使用 playwright-stealth（更全面的反检测）
+                # 配置说明：https://github.com/mattwmaster58/playwright_stealth
+                stealth = Stealth(
+                    # Chrome 相关 API 伪装
+                    chrome_app=True,                      # 添加 chrome.app 对象
+                    chrome_csi=True,                      # 添加 chrome.csi() 函数
+                    chrome_load_times=True,               # 添加 chrome.loadTimes() 函数
+                    chrome_runtime=False,                 # chrome.runtime（默认禁用，某些网站会检测）
+
+                    # Navigator 属性伪装
+                    navigator_webdriver=True,             # 隐藏 navigator.webdriver（关键！）
+                    navigator_languages=True,             # 伪装 navigator.languages
+                    navigator_platform=True,              # 伪装 navigator.platform
+                    navigator_plugins=True,               # 添加假的插件数据
+                    navigator_user_agent=True,            # 伪装 navigator.userAgent
+                    navigator_vendor=True,                # 设置 navigator.vendor
+                    navigator_hardware_concurrency=True,  # 设置逻辑处理器数量
+                    navigator_permissions=True,           # 修复 permissions API
+
+                    # WebGL 伪装（防止通过 WebGL 指纹识别）
+                    webgl_vendor=True,                    # 伪装 WebGL 厂商信息
+
+                    # 其他伪装
+                    iframe_content_window=True,           # 修复 iframe.contentWindow 检测
+                    media_codecs=True,                    # 添加媒体编解码器支持
+                    hairline=True,                        # 修复 hairline 特征检测
+
+                    # 自定义覆盖值
+                    navigator_languages_override=("zh-CN", "zh", "en"),
+                    navigator_platform_override="Win32",
+                    navigator_vendor_override="Google Inc.",
+                    webgl_vendor_override="Intel Inc.",
+                    webgl_renderer_override="Intel Iris OpenGL Engine",
+
+                    # 行为选项
+                    init_scripts_only=True,               # 只注入 JS，不修改浏览器启动参数（避免与我们的 launch_args 冲突）
+                )
+                stealth.apply_stealth_sync(context)
+                print("[反检测] ✓ 已应用 playwright-stealth")
+            else:
+                # 回退到手动注入脚本（基础反检测）
+                context.add_init_script("""
+                    // 覆盖 navigator.webdriver
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
                     });
-                }
-                
-                // 覆盖 connection
-                Object.defineProperty(navigator, 'connection', {
-                    get: () => ({
-                        effectiveType: '4g',
-                        rtt: 50,
-                        downlink: 10,
-                        saveData: false
-                    })
-                });
-                
-                // 覆盖 hardwareConcurrency
-                Object.defineProperty(navigator, 'hardwareConcurrency', {
-                    get: () => 8
-                });
-                
-                // 覆盖 deviceMemory
-                Object.defineProperty(navigator, 'deviceMemory', {
-                    get: () => 8
-                });
-                
-                // 覆盖 canvas 指纹
-                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                HTMLCanvasElement.prototype.toDataURL = function(type) {
-                    if (type === 'image/png') {
+
+                    // 覆盖 chrome 对象
+                    window.chrome = {
+                        runtime: {},
+                        loadTimes: function() {},
+                        csi: function() {},
+                        app: {}
+                    };
+
+                    // 覆盖 permissions
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+
+                    // 覆盖 plugins
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+
+                    // 覆盖 languages
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['zh-CN', 'zh', 'en']
+                    });
+
+                    // 覆盖 webdriver 相关属性
+                    delete navigator.__proto__.webdriver;
+
+                    // 覆盖 getBattery
+                    if (navigator.getBattery) {
+                        navigator.getBattery = () => Promise.resolve({
+                            charging: true,
+                            chargingTime: 0,
+                            dischargingTime: Infinity,
+                            level: 1
+                        });
+                    }
+
+                    // 覆盖 connection
+                    Object.defineProperty(navigator, 'connection', {
+                        get: () => ({
+                            effectiveType: '4g',
+                            rtt: 50,
+                            downlink: 10,
+                            saveData: false
+                        })
+                    });
+
+                    // 覆盖 hardwareConcurrency
+                    Object.defineProperty(navigator, 'hardwareConcurrency', {
+                        get: () => 8
+                    });
+
+                    // 覆盖 deviceMemory
+                    Object.defineProperty(navigator, 'deviceMemory', {
+                        get: () => 8
+                    });
+
+                    // 覆盖 canvas 指纹
+                    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                    HTMLCanvasElement.prototype.toDataURL = function(type) {
+                        if (type === 'image/png') {
+                            return originalToDataURL.apply(this, arguments);
+                        }
                         return originalToDataURL.apply(this, arguments);
-                    }
-                    return originalToDataURL.apply(this, arguments);
-                };
-                
-                // 覆盖 WebGL 指纹
-                const getParameter = WebGLRenderingContext.prototype.getParameter;
-                WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                    if (parameter === 37445) {
-                        return 'Intel Inc.';
-                    }
-                    if (parameter === 37446) {
-                        return 'Intel Iris OpenGL Engine';
-                    }
-                    return getParameter.apply(this, arguments);
-                };
-            """)
+                    };
+
+                    // 覆盖 WebGL 指纹
+                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) {
+                            return 'Intel Inc.';
+                        }
+                        if (parameter === 37446) {
+                            return 'Intel Iris OpenGL Engine';
+                        }
+                        return getParameter.apply(this, arguments);
+                    };
+                """)
             print(f"[登录] ✓ 浏览器上下文已创建")
-            
+
             try:
                 # 创建两个标签页：一个用于临时邮箱，一个用于登录
                 print(f"[登录] 正在创建页面标签...")
                 email_page = context.new_page()
                 login_page = context.new_page()
                 print(f"[登录] ✓ 页面标签已创建")
-                
+
                 try:
                     # 步骤1：获取临时邮箱
                     print(f"[登录] 正在获取临时邮箱地址...")
