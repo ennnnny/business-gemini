@@ -216,10 +216,10 @@ def register_routes(app):
                 
                 except AccountRateLimitError as e:
                     last_error = e
-                    if account_idx is not None:
-                        pt_wait = seconds_until_next_pt_midnight()
-                        cooldown_seconds = max(account_manager.rate_limit_cooldown, pt_wait)
-                        account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
+                    # if account_idx is not None:
+                    #     pt_wait = seconds_until_next_pt_midnight()
+                    #     cooldown_seconds = max(account_manager.rate_limit_cooldown, pt_wait)
+                    #     account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
                     continue
                 except AccountAuthError as e:
                     last_error = e
