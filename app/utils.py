@@ -79,7 +79,8 @@ def raise_for_account_response(resp: requests.Response, action: str, account_idx
         from .account_manager import account_manager
         # 429 错误且指定了配额类型，按类型冷却；否则冷却整个账号
         if status == 429 and quota_type:
-            account_manager.mark_quota_error(account_idx, status, error_msg, quota_type)
+            print(f"[!] 账号 {account_idx} {quota_type} 配额错误 (HTTP {status})，暂不冷却")
+            # account_manager.mark_quota_error(account_idx, status, error_msg, quota_type)
         else:
             # 401/403 或未指定配额类型，冷却整个账号
             account_manager.mark_quota_error(account_idx, status, error_msg, None)

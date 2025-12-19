@@ -751,9 +751,9 @@ def register_routes(app):
                     continue
                 except AccountResourceExhaustedError as e:
                     print(f"[!] 账号 {account_idx} 错误: {e}")
-                    last_error = e
-                    if account_idx is not None:
-                        account_manager.mark_quota_error(account_idx, 429, str(e), required_quota_type)
+                    # last_error = e
+                    # if account_idx is not None:
+                    #     account_manager.mark_quota_error(account_idx, 429, str(e), required_quota_type)
                     continue
                 except AccountAuthError as e:
                     last_error = e
