@@ -743,15 +743,16 @@ def register_routes(app):
                         successful_account_idx = account_idx
                         break
                 except AccountRateLimitError as e:
+                    print(f"[!] 账号 {account_idx} 错误: {e}")
                     last_error = e
-                    if account_idx is not None:
-                        pt_wait = seconds_until_next_pt_midnight()
-                        cooldown_seconds = max(account_manager.rate_limit_cooldown, pt_wait)
-                        account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
+                    # if account_idx is not None:
+                    #     pt_wait = seconds_until_next_pt_midnight()
+                    #     cooldown_seconds = max(account_manager.rate_limit_cooldown, pt_wait)
+                    #     account_manager.mark_account_cooldown(account_idx, str(e), cooldown_seconds)
                     continue
                 except AccountResourceExhaustedError as e:
                     print(f"[!] 账号 {account_idx} 错误: {e}")
-                    # last_error = e
+                    last_error = e
                     # if account_idx is not None:
                     #     account_manager.mark_quota_error(account_idx, 429, str(e), required_quota_type)
                     continue
