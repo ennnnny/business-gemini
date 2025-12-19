@@ -466,13 +466,14 @@ class AccountManager:
                 # 429 通常是配额超限，按配额类型冷却到第二天 PT 午夜；401/403 是认证错误，冷却整个账号（短时间）
                 if status_code == 429:
                     # 如果是配额错误且指定了配额类型，冷却到第二天 PT 午夜
-                    if quota_type:
-                        from .utils import seconds_until_next_pt_midnight
-                        cooldown_seconds = seconds_until_next_pt_midnight(now_ts)
-                        # cooldown_seconds = 3600
-                    else:
-                        # 未指定配额类型，使用短时间冷却
-                        cooldown_seconds = self.rate_limit_cooldown
+                    # if quota_type:
+                    #     from .utils import seconds_until_next_pt_midnight
+                    #     cooldown_seconds = seconds_until_next_pt_midnight(now_ts)
+                    #     # cooldown_seconds = 3600
+                    # else:
+                    #     # 未指定配额类型，使用短时间冷却
+                    #     cooldown_seconds = self.rate_limit_cooldown
+                    cooldown_seconds = 10
                 elif status_code in (401, 403):
                     # 认证错误，使用短时间冷却
                     cooldown_seconds = self.auth_error_cooldown
